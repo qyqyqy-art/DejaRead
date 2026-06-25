@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -17,6 +18,25 @@ from ..db import Note, NoteSection, Paper, get_session
 from ..embedding import Embedder, VectorStore
 from ..keyword import KeywordStore
 from .parser import split_sections
+
+
+def _ensure_heading_and_append(markdown: str, heading: str, block: str) -> str:
+    """在第一个 `## {heading}` 段末尾追加 block；该标题不存在则在文件末尾新建。"""
+    heading_line = f"## {heading}"
+    lines = markdown.splitlines()
+
+    for i, line in enumerate(lines):
+        if line.strip() == heading_line:
+            insert_at = len(lines)
+            for j in range(i + 1, len(lines)):
+                if lines[j].startswith("## "):
+                    insert_at = j
+                    break
+            new_lines = lines[:insert_at] + ["", block.rstrip("\n"), ""] + lines[insert_at:]
+            return "\n".join(new_lines).rstrip("\n") + "\n"
+
+    new_lines = lines + ["", heading_line, "", block.rstrip("\n"), ""]
+    return "\n".join(new_lines).rstrip("\n") + "\n"
 
 
 class NotesService:
@@ -123,3 +143,35 @@ class NotesService:
             ]
             self.vector_store.upsert(self.section_collection, ids, embeddings, metadatas)
             self.keyword_store.upsert(self.section_collection, ids, texts, metadatas)
+
+    def append_concept(
+        self,
+        paper_id: str,
+        concept_name: str,
+        definition: str,
+        context_snippet: str,
+        links_text: str = "",
+    ) -> str:
+        """选词标注后一键插入笔记的 "## 标注概念" 段。返回保存后的最新全文。"""
+        block = (
+            f"### {concept_name}\n\n"
+            f"**语境化解释**：{definition}\n\n"
+            f"**上下文片段**：{context_snippet}"
+        )
+        if links_text:
+            block += f"\n\n{links_text}"
+
+        current = self.read_or_create(paper_id)
+        updated = _ensure_heading_and_append(current, "标注概念", block)
+        self.save(paper_id, updated)
+        return updated
+
+    def append_conversation_summary(self, paper_id: str, summary_text: str) -> str:
+        """将对话摘要插入笔记的 "## 对话摘要" 段。返回保存后的最新全文。"""
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        block = f"**{timestamp}**\n\n{summary_text}"
+
+        current = self.read_or_create(paper_id)
+        updated = _ensure_heading_and_append(current, "对话摘要", block)
+        self.save(paper_id, updated)
+        return updated
