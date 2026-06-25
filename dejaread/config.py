@@ -57,6 +57,7 @@ class VectorStoreConfig:
 class LinkingConfig:
     similarity_threshold: float = 0.6
     top_k: int = 5
+    rrf_k: int = 60
 
 
 @dataclass

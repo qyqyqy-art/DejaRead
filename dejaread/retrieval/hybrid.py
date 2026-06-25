@@ -24,6 +24,31 @@ class HybridMatch:
     keyword_rank: int | None = None
 
 
+def fuse_rrf(vector_hits, keyword_hits, rrf_k: int = 60) -> list[HybridMatch]:
+    """用 Reciprocal Rank Fusion 合并向量检索和关键词检索的命中列表。
+
+    供 :class:`HybridRetriever` 与其他需要"向量+关键词"召回的场景（如
+    :class:`~dejaread.concepts.linking.LinkDiscovery`）复用。
+    """
+    matches: dict[str, HybridMatch] = {}
+
+    for rank, hit in enumerate(vector_hits, start=1):
+        match = matches.setdefault(
+            hit.id, HybridMatch(id=hit.id, fused_score=0.0, metadata=hit.metadata)
+        )
+        match.vector_rank = rank
+        match.fused_score += 1 / (rrf_k + rank)
+
+    for rank, hit in enumerate(keyword_hits, start=1):
+        match = matches.setdefault(
+            hit.id, HybridMatch(id=hit.id, fused_score=0.0, metadata=hit.metadata)
+        )
+        match.keyword_rank = rank
+        match.fused_score += 1 / (rrf_k + rank)
+
+    return sorted(matches.values(), key=lambda m: m.fused_score, reverse=True)
+
+
 class HybridRetriever:
     """对同一个 collection 同时做向量检索和关键词检索，按 RRF 融合排序后返回。"""
 
@@ -47,23 +72,4 @@ class HybridRetriever:
         query_embedding = self.embedder.embed_query(query_text)
         vector_hits = self.vector_store.query(self.collection, query_embedding, top_k=self.top_k)
         keyword_hits = self.keyword_store.query(self.collection, query_text, top_k=self.top_k)
-        return self._fuse_rrf(vector_hits, keyword_hits)
-
-    def _fuse_rrf(self, vector_hits, keyword_hits) -> list[HybridMatch]:
-        matches: dict[str, HybridMatch] = {}
-
-        for rank, hit in enumerate(vector_hits, start=1):
-            match = matches.setdefault(
-                hit.id, HybridMatch(id=hit.id, fused_score=0.0, metadata=hit.metadata)
-            )
-            match.vector_rank = rank
-            match.fused_score += 1 / (self.rrf_k + rank)
-
-        for rank, hit in enumerate(keyword_hits, start=1):
-            match = matches.setdefault(
-                hit.id, HybridMatch(id=hit.id, fused_score=0.0, metadata=hit.metadata)
-            )
-            match.keyword_rank = rank
-            match.fused_score += 1 / (self.rrf_k + rank)
-
-        return sorted(matches.values(), key=lambda m: m.fused_score, reverse=True)
+        return fuse_rrf(vector_hits, keyword_hits, self.rrf_k)

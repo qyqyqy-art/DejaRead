@@ -22,6 +22,7 @@ from dejaread.db import Paper, init_db
 from dejaread.embedding import Embedder, InMemoryVectorStore, RemoteEmbedder
 from dejaread.ingestion import Chunker, IngestionPipeline
 from dejaread.ingestion.parser import ParsedPaper, ParsedSection, PDFParser
+from dejaread.keyword import SQLiteFTSStore
 
 
 class DemoParser(PDFParser):
@@ -79,10 +80,12 @@ def main() -> None:
     print(f"入库完成：{grpo.title!r} ({grpo.id})\n         {dapo.title!r} ({dapo.id})")
 
     # ---- 3.2 用户驱动概念图谱：选词标注 → 解释 → 跨论文关联发现 ----
+    keyword_store = SQLiteFTSStore(db_path=":memory:")
     service = ConceptAnnotationService(
         embedder=embedder,
         vector_store=vector_store,
-        link_discovery=LinkDiscovery(vector_store, similarity_threshold=0.3),
+        keyword_store=keyword_store,
+        link_discovery=LinkDiscovery(vector_store, keyword_store, similarity_threshold=0.3),
     )
 
     result_a = service.annotate(AnnotationRequest(paper_id=grpo.id, selected_text="PPO", page_number=3))

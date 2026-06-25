@@ -23,7 +23,7 @@ from ..config import get_config
 from ..db import Chunk, Concept, ConceptLink, get_session
 from ..embedding import Embedder, InMemoryVectorStore, VectorStore
 from ..keyword import KeywordStore, SQLiteFTSStore
-from .linking import LinkDiscovery
+from .linking import LinkCandidate, LinkDiscovery
 from .llm import ConceptLLM, MockConceptLLM
 from .schemas import AnnotationRequest, AnnotationResult, LinkResult
 
@@ -45,7 +45,7 @@ class ConceptAnnotationService:
         self.vector_store = vector_store or InMemoryVectorStore()
         self.keyword_store = keyword_store or SQLiteFTSStore()
         self.llm_client = llm_client or MockConceptLLM()
-        self.link_discovery = link_discovery or LinkDiscovery(self.vector_store)
+        self.link_discovery = link_discovery or LinkDiscovery(self.vector_store, self.keyword_store)
         self._session_factory = session_factory
         self.context_window_chars = (
             context_window_chars
@@ -68,6 +68,19 @@ class ConceptAnnotationService:
                 paper_title=paper_title,
             )
 
+            concept_text = f"{request.selected_text}: {definition}"
+            # document 侧向量用于写入向量库（供之后被检索到）；query 侧向量用于本次
+            # 主动检索已有概念——非对称 embedding 模型（如 Qwen3-Embedding）对两者的
+            # 编码方式不同（见 dejaread.embedding.RemoteEmbedder.embed_query）。
+            document_embedding = self.embedder.embed_one(concept_text)
+            query_embedding = self.embedder.embed_query(concept_text)
+            # 关联候选检索（含关键词侧）必须在 ORM 写事务开始之前完成：SQLiteFTSStore 用
+            # 独立连接读同一个 sqlite 文件，若此时 ORM 已持有写锁会触发 "database is locked"。
+            # 此时新概念还未写入任何库，天然不会把自己检索回来，因此无需排除自身 id。
+            candidates = self.link_discovery.find_candidates(
+                query_embedding, concept_text, exclude_paper_id=request.paper_id
+            )
+
             concept = Concept(
                 name=request.selected_text,
                 paper_id=request.paper_id,
@@ -81,13 +94,7 @@ class ConceptAnnotationService:
             session.add(concept)
             session.flush()  # 拿到 concept.id，供向量库 metadata 与关联边使用
 
-            concept_text = f"{concept.name}: {definition}"
-            # document 侧向量用于写入向量库（供之后被检索到）；query 侧向量用于本次
-            # 主动检索已有概念——非对称 embedding 模型（如 Qwen3-Embedding）对两者的
-            # 编码方式不同（见 dejaread.embedding.RemoteEmbedder.embed_query）。
-            document_embedding = self.embedder.embed_one(concept_text)
-            query_embedding = self.embedder.embed_query(concept_text)
-            links = self._discover_links(session, concept, query_embedding)
+            links = self._create_links(session, concept, candidates)
 
             session.commit()
             session.refresh(concept)
@@ -100,7 +107,7 @@ class ConceptAnnotationService:
         # 写向量库/关键词库放在 ORM 事务提交并关闭 session 之后：SQLiteFTSStore 用独立的
         # sqlite 连接写同一个数据库文件，若 ORM 事务仍未提交（持有写锁），会触发
         # "database is locked"。同时也保证标注完成后才让新概念可被检索到，避免它把自己
-        # 检索回来（_discover_links 在它之前执行）。
+        # 检索回来（关联候选检索在概念写入之前就已完成）。
         concept_metadata = [{"paper_id": concept.paper_id, "name": concept.name}]
         self.vector_store.upsert(
             collection=self._concept_collection,
@@ -162,16 +169,10 @@ class ConceptAnnotationService:
         end = min(len(chunk_content), index + len(selected_text) + self.context_window_chars)
         return chunk_content[start:end]
 
-    def _discover_links(
-        self, session: Session, concept: Concept, concept_embedding: list[float]
+    def _create_links(
+        self, session: Session, concept: Concept, candidates: list[LinkCandidate]
     ) -> list[LinkResult]:
-        """跨论文关联发现（3.2.3）：向量粗筛 + LLM 精排，写入 concept_links 表。"""
-        candidates = self.link_discovery.find_candidates(
-            concept_embedding,
-            exclude_concept_id=concept.id,
-            exclude_paper_id=concept.paper_id,
-        )
-
+        """跨论文关联发现（3.2.3）：对粗筛候选做 LLM 精排，写入 concept_links 表。"""
         results: list[LinkResult] = []
         for candidate in candidates:
             related = session.get(Concept, candidate.concept_id)

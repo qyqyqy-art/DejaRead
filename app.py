@@ -35,6 +35,7 @@ from dejaread.embedding import (
     VectorStore,
 )
 from dejaread.ingestion import IngestionPipeline
+from dejaread.keyword import SQLiteFTSStore
 from dejaread.llm import OpenAICompatibleLLMClient
 
 
@@ -58,13 +59,15 @@ def _build_concept_llm() -> ConceptLLM:
 
 embedder: Embedder = RemoteEmbedder()
 vector_store: VectorStore = _build_vector_store()
+keyword_store = SQLiteFTSStore()
 concept_llm: ConceptLLM = _build_concept_llm()
-link_discovery = LinkDiscovery(vector_store)
+link_discovery = LinkDiscovery(vector_store, keyword_store)
 
 ingestion_pipeline = IngestionPipeline(embedder=embedder, vector_store=vector_store)
 annotation_service = ConceptAnnotationService(
     embedder=embedder,
     vector_store=vector_store,
+    keyword_store=keyword_store,
     llm_client=concept_llm,
     link_discovery=link_discovery,
 )
