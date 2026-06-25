@@ -1,5 +1,5 @@
 from .base import Base, get_session, init_db, session_scope
-from .models import Chunk, Concept, ConceptLink, LinkType, Paper, UserFamiliarity
+from .models import Chunk, Concept, ConceptLink, LinkType, Note, NoteSection, Paper, UserFamiliarity
 
 __all__ = [
     "Base",
@@ -12,4 +12,6 @@ __all__ = [
     "ConceptLink",
     "LinkType",
     "UserFamiliarity",
+    "Note",
+    "NoteSection",
 ]

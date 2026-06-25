@@ -144,3 +144,46 @@ class ConceptLink(Base):
             f"<ConceptLink {self.source_id!r} -[{self.link_type}]-> "
             f"{self.target_id!r}>"
         )
+
+
+class Note(Base):
+    """笔记元数据表（3.4 节，文件是唯一真实来源，本表只存路径和同步时间）。"""
+
+    __tablename__ = "notes"
+
+    paper_id: Mapped[str] = mapped_column(ForeignKey("papers.id"), primary_key=True)
+    file_path: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    paper: Mapped["Paper"] = relationship()
+    sections: Mapped[list["NoteSection"]] = relationship(
+        back_populates="note", cascade="all, delete-orphan", order_by="NoteSection.section_index"
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Note paper_id={self.paper_id!r} file_path={self.file_path!r}>"
+
+
+class NoteSection(Base):
+    """笔记分段表（按 `## ` 二级标题切分，保存笔记时全量重建，见 3.4 节）。"""
+
+    __tablename__ = "note_sections"
+
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: _new_id("note_section")
+    )
+    paper_id: Mapped[str] = mapped_column(ForeignKey("notes.paper_id"), nullable=False)
+    heading: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    section_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    note: Mapped["Note"] = relationship(back_populates="sections")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<NoteSection id={self.id!r} paper_id={self.paper_id!r} heading={self.heading!r}>"
