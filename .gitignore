@@ -9,6 +9,7 @@ chroma_data/
 .claude/
 .copilot/
 .opencode/
+**/.DS_Store
 
 docs/
 tests/
