@@ -1,0 +1,21 @@
+# 核心依赖（3.1 / 3.2 模块运行所需）
+sqlalchemy>=2.0
+requests>=2.31  # RemoteEmbedder 调用远程 embedding 服务（如 vLLM 部署的 Qwen3-Embedding / bge-m3）
+pyyaml>=6.0     # 加载 config/config.yaml 配置文件
+
+# 3.1 入库管线：PDF 解析回退方案（轻量，无需模型权重）
+pypdf>=4.0
+
+# 关键词索引：中文分词（FTS5 默认 tokenizer 不支持中文切词）
+jieba>=0.42
+
+# 可选：生产环境替代方案（默认用内置的轻量实现也能跑通整套流程）
+# marker-pdf            # PDF 解析（双栏排版/公式支持更好）
+# chromadb               # 向量数据库
+# openai                 # 调用 Ollama / DeepSeek 的 OpenAI 兼容接口
+
+# 前端：3.1 / 3.2 演示页面（app.py）
+gradio>=4.0
+
+# 测试
+pytest>=8.0

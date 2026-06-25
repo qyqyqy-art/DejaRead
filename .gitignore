@@ -1,0 +1,15 @@
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+*.db
+chroma_data/
+
+.claude/
+.copilot/
+.opencode/
+
+docs/
+tests/
+config/
