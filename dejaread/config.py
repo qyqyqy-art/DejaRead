@@ -78,6 +78,19 @@ class KeywordStoreConfig:
 
 
 @dataclass
+class NotesConfig:
+    notes_dir: str = "./notes"
+    section_collection: str = "note_sections"
+
+
+@dataclass
+class QAConfig:
+    chunk_top_k: int = 5
+    note_top_k: int = 5
+    overfetch_factor: int = 5
+
+
+@dataclass
 class AppConfig:
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
@@ -87,6 +100,8 @@ class AppConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     annotation: AnnotationConfig = field(default_factory=AnnotationConfig)
     keyword_store: KeywordStoreConfig = field(default_factory=KeywordStoreConfig)
+    notes: NotesConfig = field(default_factory=NotesConfig)
+    qa: QAConfig = field(default_factory=QAConfig)
 
 
 def _build_section(section_cls: type, data: dict | None) -> object:
@@ -109,6 +124,8 @@ def _build_app_config(raw: dict) -> AppConfig:
         llm=_build_section(LLMConfig, raw.get("llm")),
         annotation=_build_section(AnnotationConfig, raw.get("annotation")),
         keyword_store=_build_section(KeywordStoreConfig, raw.get("keyword_store")),
+        notes=_build_section(NotesConfig, raw.get("notes")),
+        qa=_build_section(QAConfig, raw.get("qa")),
     )
 
 
