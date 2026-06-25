@@ -44,6 +44,10 @@ class KeywordStore(ABC):
     def query(self, collection: str, query_text: str, top_k: int = 5) -> list[KeywordMatch]:
         """在指定集合中做关键词检索，按 BM25 相关度降序返回。"""
 
+    @abstractmethod
+    def delete(self, collection: str, ids: list[str]) -> None:
+        """删除指定集合中给定 id 的关键词索引项。"""
+
 
 class SQLiteFTSStore(KeywordStore):
     """基于 SQLite FTS5 的关键词库实现，每个 collection 对应一张 ``fts_<collection>`` 虚拟表。"""
@@ -107,3 +111,11 @@ class SQLiteFTSStore(KeywordStore):
             KeywordMatch(id=id_, score=-rank, metadata=json.loads(metadata_json))
             for id_, metadata_json, rank in rows
         ]
+
+    def delete(self, collection: str, ids: list[str]) -> None:
+        if not ids:
+            return
+        table = self._ensure_collection(collection)
+        placeholders = ",".join("?" for _ in ids)
+        self._conn.execute(f"DELETE FROM {table} WHERE id IN ({placeholders})", ids)
+        self._conn.commit()

@@ -46,6 +46,10 @@ class VectorStore(ABC):
     ) -> list[VectorMatch]:
         """在指定集合中做向量 Top-K 检索，按相似度降序返回。"""
 
+    @abstractmethod
+    def delete(self, collection: str, ids: list[str]) -> None:
+        """删除指定集合中给定 id 的向量。"""
+
 
 class InMemoryVectorStore(VectorStore):
     """纯内存向量库，线性扫描做余弦相似度检索。仅用于开发/测试规模的数据量。"""
@@ -75,6 +79,13 @@ class InMemoryVectorStore(VectorStore):
         ]
         scored.sort(key=lambda m: m.score, reverse=True)
         return scored[:top_k]
+
+    def delete(self, collection: str, ids: list[str]) -> None:
+        store = self._collections.get(collection)
+        if not store:
+            return
+        for id_ in ids:
+            store.pop(id_, None)
 
     @staticmethod
     def _cosine(a: list[float], b: list[float]) -> float:
@@ -127,3 +138,8 @@ class ChromaVectorStore(VectorStore):
             VectorMatch(id=id_, score=1.0 / (1.0 + dist), metadata=meta or {})
             for id_, dist, meta in zip(ids, distances, metadatas)
         ]
+
+    def delete(self, collection: str, ids: list[str]) -> None:
+        if not ids:
+            return
+        self._get_collection(collection).delete(ids=ids)
