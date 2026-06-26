@@ -58,9 +58,9 @@ class ConceptAnnotationService:
         """处理一次选词标注请求，返回概念解释 + 跨论文关联（如有）。"""
         session = self._session_factory()
         try:
-            chunk = self._locate_chunk(session, request)
-            context_snippet = self._extract_context(chunk.content, request.selected_text)
-            paper_title = chunk.paper.title
+            chunks = self._locate_chunks(session, request)
+            context_snippet = self._merge_contexts(chunks, request.selected_text)
+            paper_title = chunks[0].paper.title
 
             definition = self.llm_client.generate_definition(
                 concept_text=request.selected_text,
@@ -86,7 +86,7 @@ class ConceptAnnotationService:
                 paper_id=request.paper_id,
                 selected_text=request.selected_text,
                 page_number=request.page_number,
-                source_chunk_id=chunk.id,
+                source_chunk_id=chunks[0].id,
                 context_snippet=context_snippet,
                 definition=definition,
                 last_discussed=datetime.utcnow(),
@@ -114,6 +114,7 @@ class ConceptAnnotationService:
             ids=[concept.id],
             embeddings=[document_embedding],
             metadatas=concept_metadata,
+            documents=[concept_text],
         )
         self.keyword_store.upsert(
             collection=self._concept_collection,
@@ -130,13 +131,13 @@ class ConceptAnnotationService:
             links=links,
         )
 
-    def _locate_chunk(self, session: Session, request: AnnotationRequest) -> Chunk:
-        """定位选中词所在的 chunk（3.2.1："后端定位选中词所在的 chunk，提取上下文"）。"""
+    def _locate_chunks(self, session: Session, request: AnnotationRequest) -> list[Chunk]:
+        """定位选中词所在的所有 chunk，用于合并多处上下文。"""
         if request.chunk_id is not None:
             chunk = session.get(Chunk, request.chunk_id)
             if chunk is None:
                 raise ValueError(f"未找到 chunk: {request.chunk_id}")
-            return chunk
+            return [chunk]
 
         stmt = (
             select(Chunk)
@@ -144,9 +145,9 @@ class ConceptAnnotationService:
             .where(Chunk.content.contains(request.selected_text))
             .order_by(Chunk.chunk_index)
         )
-        chunk = session.execute(stmt).scalars().first()
-        if chunk is not None:
-            return chunk
+        chunks = list(session.execute(stmt).scalars().all())
+        if chunks:
+            return chunks
 
         # 兜底：选中文本未能在任何 chunk 中精确匹配时，退回该论文的第一个 chunk，
         # 保证标注流程不中断（仍能生成解释，只是上下文不够精确）。
@@ -158,7 +159,18 @@ class ConceptAnnotationService:
         chunk = session.execute(fallback_stmt).scalars().first()
         if chunk is None:
             raise ValueError(f"论文 {request.paper_id} 没有任何已入库的 chunk")
-        return chunk
+        return [chunk]
+
+    def _merge_contexts(self, chunks: list[Chunk], selected_text: str) -> str:
+        """合并多个 chunk 中选中词周围的上下文片段，用分隔符拼接去重。"""
+        snippets: list[str] = []
+        seen: set[str] = set()
+        for chunk in chunks:
+            snippet = self._extract_context(chunk.content, selected_text)
+            if snippet not in seen:
+                seen.add(snippet)
+                snippets.append(snippet)
+        return "\n\n---\n\n".join(snippets)
 
     def _extract_context(self, chunk_content: str, selected_text: str) -> str:
         """从 chunk 内容中截取选中词周围 ``context_window_chars`` 字符作为上下文片段。"""

@@ -121,6 +121,7 @@ class IngestionPipeline:
             ids=[c.id for c in chunks],
             embeddings=embeddings,
             metadatas=metadatas,
+            documents=[c.content for c in chunks],
         )
         self.keyword_store.upsert(
             collection=self.chunk_collection,

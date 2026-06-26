@@ -37,6 +37,7 @@ class VectorStore(ABC):
         ids: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict] | None = None,
+        documents: list[str] | None = None,
     ) -> None:
         """插入或覆盖一批向量。"""
 
@@ -63,6 +64,7 @@ class InMemoryVectorStore(VectorStore):
         ids: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict] | None = None,
+        documents: list[str] | None = None,
     ) -> None:
         store = self._collections.setdefault(collection, {})
         metadatas = metadatas or [{} for _ in ids]
@@ -119,9 +121,10 @@ class ChromaVectorStore(VectorStore):
         ids: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict] | None = None,
+        documents: list[str] | None = None,
     ) -> None:
         col = self._get_collection(collection)
-        col.upsert(ids=ids, embeddings=embeddings, metadatas=metadatas)
+        col.upsert(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
 
     def query(
         self, collection: str, embedding: list[float], top_k: int = 5

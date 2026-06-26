@@ -141,7 +141,7 @@ class NotesService:
                 {"paper_id": paper_id, "heading": s["heading"], "note_section_id": s["id"]}
                 for s in new_section_data
             ]
-            self.vector_store.upsert(self.section_collection, ids, embeddings, metadatas)
+            self.vector_store.upsert(self.section_collection, ids, embeddings, metadatas, documents=texts)
             self.keyword_store.upsert(self.section_collection, ids, texts, metadatas)
 
     def append_concept(
