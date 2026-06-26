@@ -3,7 +3,7 @@
 覆盖 3.1（论文入库管线）与 3.2（用户驱动概念图谱）的核心交互：
 
     Tab 1 论文入库：上传 PDF → 解析 → 分块 → embedding → 写入向量库 + SQLite
-    Tab 2 选词标注：手动输入选中的词/短语 + 指定论文 + 页码 → 生成解释 → 跨论文关联发现
+    Tab 2 选词标注：复制选中的词/短语 + 指定论文 + 页码 → 生成解释 → 跨论文关联发现
 
 所有可变参数（数据库连接、分块、embedding 服务、向量库、LLM 等）从
 ``config/config.yaml`` 读取，见 :mod:`dejaread.config`。
@@ -26,7 +26,7 @@ from dejaread.concepts import (
 )
 from dejaread.concepts.linking import LinkDiscovery
 from dejaread.config import get_config
-from dejaread.db import Chunk, Paper, init_db, session_scope
+from dejaread.db import Chunk, Concept, Note, Paper, init_db, session_scope
 from dejaread.embedding import (
     ChromaVectorStore,
     Embedder,
@@ -144,13 +144,60 @@ def ingest_paper(
     return message, refresh_paper_choices()
 
 
+def delete_paper(paper_id: str | None) -> tuple[str, gr.Dropdown]:
+    """按 paper_id 删除论文：SQLite（paper + chunks + concepts + notes）+ 向量库 + 关键词库。"""
+    if not paper_id:
+        return "请先选择要删除的论文。", refresh_paper_choices()
+
+    cfg = get_config()
+    chunk_collection = cfg.vector_store.chunk_collection
+    concept_collection = cfg.vector_store.concept_collection
+
+    try:
+        with session_scope() as session:
+            # 收集需要从向量库/关键词库中删除的 id
+            chunk_ids = [
+                c.id for c in session.query(Chunk).filter_by(paper_id=paper_id).all()
+            ]
+            concept_ids = [
+                c.id for c in session.query(Concept).filter_by(paper_id=paper_id).all()
+            ]
+
+            # 删除向量库和关键词库中的数据
+            if chunk_ids:
+                vector_store.delete(collection=chunk_collection, ids=chunk_ids)
+                keyword_store.delete(collection=chunk_collection, ids=chunk_ids)
+            if concept_ids:
+                vector_store.delete(collection=concept_collection, ids=concept_ids)
+                keyword_store.delete(collection=concept_collection, ids=concept_ids)
+
+            # 删除笔记文件
+            note = session.query(Note).filter_by(paper_id=paper_id).first()
+            if note:
+                import os
+                if os.path.exists(note.file_path):
+                    os.remove(note.file_path)
+
+            # 删除 SQLite 中的数据（cascade 会自动删除 chunks、concepts、notes 等）
+            paper = session.query(Paper).filter_by(id=paper_id).first()
+            if not paper:
+                return f"未找到论文 `{paper_id}`。", refresh_paper_choices()
+            paper_title = paper.title
+            session.delete(paper)
+
+        return f"已删除论文「{paper_title}」(`{paper_id}`)。", refresh_paper_choices()
+
+    except Exception as exc:  # noqa: BLE001
+        return f"删除失败：{exc}", refresh_paper_choices()
+
+
 def annotate(
     paper_id: str | None, selected_text: str, page_number: float | None
 ) -> tuple[str, str, dict | None]:
     if not paper_id:
         return "请先选择一篇论文。", "", None
     if not selected_text or not selected_text.strip():
-        return "请输入选中的词/短语。", "", None
+        return "请复制选中的词/短语。", "", None
 
     request = AnnotationRequest(
         paper_id=paper_id,
@@ -256,13 +303,19 @@ with gr.Blocks(title="DejaRead") as demo:
                 ingest_button = gr.Button("上传并入库", variant="primary")
             with gr.Column():
                 ingest_output = gr.Markdown(label="入库结果")
+                gr.Markdown("---")
+                gr.Markdown("### 删除论文")
+                delete_paper_dropdown = gr.Dropdown(label="选择要删除的论文", choices=_list_papers())
+                delete_refresh_button = gr.Button("刷新论文列表")
+                delete_button = gr.Button("🗑️ 删除论文", variant="stop")
+                delete_output = gr.Markdown(label="删除结果")
 
     with gr.Tab("3.2 选词标注"):
         with gr.Row():
             with gr.Column():
                 paper_dropdown = gr.Dropdown(label="选择论文", choices=_list_papers())
                 refresh_button = gr.Button("刷新论文列表")
-                selected_text_input = gr.Textbox(label="选中的词/短语，例如 PPO、clip-higher")
+                selected_text_input = gr.Textbox(label="复制选中的词/短语，例如 PPO、clip-higher")
                 page_number_input = gr.Number(label="页码（可选）", precision=0)
                 annotate_button = gr.Button("标注", variant="primary")
             with gr.Column():
@@ -300,6 +353,12 @@ with gr.Blocks(title="DejaRead") as demo:
         inputs=[pdf_input, title_input, authors_input, venue_input, year_input],
         outputs=[ingest_output, paper_dropdown],
     )
+    delete_refresh_button.click(refresh_paper_choices, outputs=[delete_paper_dropdown])
+    delete_button.click(
+        delete_paper,
+        inputs=[delete_paper_dropdown],
+        outputs=[delete_output, delete_paper_dropdown],
+    )
     refresh_button.click(refresh_paper_choices, outputs=[paper_dropdown])
     annotate_button.click(
         annotate,
@@ -331,4 +390,4 @@ with gr.Blocks(title="DejaRead") as demo:
 
 if __name__ == "__main__":
     init_db()
-    demo.launch()
+    demo.launch(server_name="0.0.0.0", server_port=9000)
