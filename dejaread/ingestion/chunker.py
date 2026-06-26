@@ -11,12 +11,16 @@ from dataclasses import dataclass
 from ..config import get_config
 from .parser import ParsedPaper
 
-_HEADING_RE = re.compile(
-    r"^\s*(\d+\.?\s+)?(abstract|introduction|related work|background|method|"
-    r"methodology|experiment|experiments|result|results|discussion|conclusion|"
-    r"references|acknowledg(e)?ments?)\b",
-    re.IGNORECASE,
+# 匹配编号式章节标题，如 "2. Architecture"、"3.1 Experiment"、"A.2 Acknowledgment"
+_NUMBERED_HEADING_RE = re.compile(
+    r"^\s*(?:[A-Z]\.?\d*|\d+)(?:\.\d+)*\.?\s+\S+",
 )
+
+# 匹配 Markdown 风格标题 (marker parser 输出)
+_MD_HEADING_RE = re.compile(r"^\s*#{1,4}\s+\S+")
+
+# PDF 断字：行尾连字符 + 换行 + 下一行以小写字母开头，表示单词被断开
+_DEHYPHEN_RE = re.compile(r"(\w)-\s*\n\s*([a-z])")
 
 
 @dataclass
@@ -72,13 +76,14 @@ class Chunker:
             buffer_page = None
 
         for section in paper.sections:
-            for paragraph in self._split_paragraphs(section.text):
+            cleaned_text = self._dehyphenate(section.text)
+            for paragraph in self._split_paragraphs(cleaned_text):
                 heading = self._detect_heading(paragraph)
                 if heading is not None:
                     current_section = heading
 
                 if buffer and len(buffer) + len(paragraph) + 1 > self.max_chars:
-                    overlap = buffer[-self.overlap_chars :]
+                    overlap = self._word_safe_overlap(buffer)
                     flush()
                     buffer = overlap
                     buffer_page = section.page_number
@@ -95,8 +100,32 @@ class Chunker:
         return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
     @staticmethod
+    def _dehyphenate(text: str) -> str:
+        """修复 PDF 提取文本中的断字：行尾连字符 + 换行 + 小写字母开头 → 拼合单词。"""
+        return _DEHYPHEN_RE.sub(r"\1\2", text)
+
+    def _word_safe_overlap(self, text: str) -> str:
+        """取 text 末尾约 overlap_chars 字符，但在单词边界处截断，避免切断单词。"""
+        if len(text) <= self.overlap_chars:
+            return text
+        overlap = text[-self.overlap_chars :]
+        # 如果截取点正好在单词中间，向前跳到下一个空白字符之后
+        space_idx = overlap.find(" ")
+        if space_idx > 0:
+            overlap = overlap[space_idx + 1 :]
+        return overlap
+
+    @staticmethod
     def _detect_heading(paragraph: str) -> str | None:
+        """识别章节标题。支持编号式标题和 Markdown 标题。"""
         first_line = paragraph.splitlines()[0].strip()
-        if len(first_line) <= 60 and _HEADING_RE.match(first_line):
+        # 过长的行不太可能是标题
+        if len(first_line) > 80:
+            return None
+        # 编号式标题: "2. Architecture", "3.1 Experiment Results", "A.1 Appendix"
+        if _NUMBERED_HEADING_RE.match(first_line):
             return first_line
+        # Markdown 标题: "## Architecture"
+        if _MD_HEADING_RE.match(first_line):
+            return first_line.lstrip("# ").strip()
         return None
