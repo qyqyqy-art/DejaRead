@@ -1,3 +1,4 @@
+from .rewriter import QueryRewriter, RewriteResult
 from .schemas import ChatTurn, Citation, QARequest, QAResult
 from .service import QAService
 
@@ -7,4 +8,6 @@ __all__ = [
     "QARequest",
     "QAResult",
     "QAService",
+    "QueryRewriter",
+    "RewriteResult",
 ]

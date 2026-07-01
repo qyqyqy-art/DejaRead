@@ -95,7 +95,9 @@ class NotesConfig:
 class QAConfig:
     chunk_top_k: int = 5
     note_top_k: int = 5
-    overfetch_factor: int = 5
+    concept_top_k: int = 3
+    rewrite_history_turns: int = 5
+    context_token_budget: int = 3000
 
 
 @dataclass
