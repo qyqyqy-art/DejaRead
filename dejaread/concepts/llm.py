@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 
 from ..db.models import LinkType
 from ..llm import LLMClient
+from ..utils.utils import parse_json
 
 
 class ConceptLLM(ABC):
@@ -92,7 +93,7 @@ class PromptedConceptLLM(ConceptLLM):
         if raw.lower() == "null":
             return None
         try:
-            data = json.loads(raw)
+            data = parse_json(raw)
         except json.JSONDecodeError:
             return None
         if data is None:

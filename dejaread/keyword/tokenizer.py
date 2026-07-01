@@ -1,14 +1,14 @@
-"""中文/中英混合文本分词，供 SQLite FTS5 关键词索引使用（见 :mod:`dejaread.keyword.store`）。
+"""
+中文/中英混合文本分词，供 SQLite FTS5 关键词索引使用（见 :mod: dejaread.keyword.store）。
 
-FTS5 默认 tokenizer（``unicode61``）按空格/标点切分，无法正确处理无空格的中文文本，
+FTS5 默认 tokenizer（unicode61）按空格/标点切分，无法正确处理无空格的中文文本，
 所以索引写入前先用 jieba 把文本切成词，再以空格拼接成 FTS5 能正确检索的形式。索引和
-查询必须共用同一套清洗逻辑（:func:`segment`），否则会出现切词口径不一致导致搜不到的问题。
+查询必须共用同一套清洗逻辑（:func: segment），否则会出现切词口径不一致导致搜不到的问题。
 """
 
 from __future__ import annotations
 
 import re
-
 import jieba
 
 _PUNCT_RE = re.compile(r"^[\s\W]+$", re.UNICODE)
