@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -140,7 +141,6 @@ class PaddleOCRPDFParser(PDFParser):
         pipeline_version: str | None = None,
         vl_rec_backend: str | None = None,
         vl_rec_server_url: str | None = None,
-        cuda_visible_devices: str | None = None,
         timeout: float | None = None,
         **pipeline_kwargs: Any,
     ) -> None:
@@ -207,8 +207,8 @@ class PaddleOCRPDFParser(PDFParser):
     def _get_pipeline(self) -> Any:
         if self._pipeline is not None:
             return self._pipeline
-
-        if self.cuda_visible_devices is not None:
+        
+        if self.cuda_visible_devices is not None and sys.platform.startswith("linux"):
             os.environ["CUDA_VISIBLE_DEVICES"] = self.cuda_visible_devices
         try:
             from paddleocr import PaddleOCRVL

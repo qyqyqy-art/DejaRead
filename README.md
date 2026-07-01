@@ -79,7 +79,7 @@ llm:
 启动 Gradio demo：
 
 ```bash
-CUDA_VISIBLE_DEVICES=5 python app.py
+python app.py
 ```
 
 默认会在 `0.0.0.0:9000` 启动。
@@ -93,7 +93,7 @@ CUDA_VISIBLE_DEVICES=5 python app.py
 
 ## PaddleOCR-VL
 
-项目提供了一个 PaddleOCR-VL vLLM server 的 Docker 启动脚本：
+项目提供了一个 PaddleOCR-VL vLLM server 的 Docker 启动脚本（基于GPU）：
 
 ```bash
 bash dejaread/ingestion/paddleocr.sh
