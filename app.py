@@ -10,7 +10,7 @@
 
 运行：
 
-    python app.py
+    CUDA_VISIBLE_DEVICES=5 python app.py
 """
 
 from __future__ import annotations
