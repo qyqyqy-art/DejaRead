@@ -17,7 +17,7 @@ from ..db import Chunk, Paper, get_session
 from ..embedding import Embedder, InMemoryVectorStore, VectorStore
 from ..keyword import KeywordStore, SQLiteFTSStore
 from .chunker import Chunker
-from .parser import ParsedPaper, PDFParser, PyPDFParser
+from .parser import PaddleOCRPDFParser, ParsedPaper, PDFParser
 
 
 class IngestionPipeline:
@@ -33,7 +33,7 @@ class IngestionPipeline:
         session_factory: Callable[[], Session] = get_session,
         chunk_collection: str | None = None,
     ) -> None:
-        self.parser = parser or PyPDFParser()
+        self.parser = parser or PaddleOCRPDFParser()
         self.chunker = chunker or Chunker()
         self.embedder = embedder
         self.vector_store = vector_store or InMemoryVectorStore()
@@ -60,6 +60,7 @@ class IngestionPipeline:
         try:
             paper = self._save_paper(session, parsed, pdf_path, title, authors, venue, year)
             chunks = self._save_chunks(session, paper, text_chunks)
+            self._save_parser_artifacts(paper)
             session.commit()
             session.refresh(paper)
         except Exception:
@@ -70,6 +71,11 @@ class IngestionPipeline:
 
         self._index_chunks(paper.id, chunks)
         return paper
+
+    def _save_parser_artifacts(self, paper: Paper) -> None:
+        save_artifacts = getattr(self.parser, "save_artifacts", None)
+        if save_artifacts is not None:
+            save_artifacts(paper.title, paper.id)
 
     def _save_paper(
         self,

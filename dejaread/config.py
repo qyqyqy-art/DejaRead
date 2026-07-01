@@ -34,6 +34,14 @@ class ChunkingConfig:
 
 
 @dataclass
+class PaddleOCRConfig:
+    pipeline_version: str = "v1.6"
+    vl_rec_backend: str = "vllm-server"
+    vl_rec_server_url: str = "http://127.0.0.1:8080/v1"
+    cuda_visible_devices: str = "5"
+
+
+@dataclass
 class EmbeddingConfig:
     base_url: str = "http://localhost:8000/v1"
     model: str = "Qwen3-Embedding-0.6B"
@@ -94,6 +102,7 @@ class QAConfig:
 class AppConfig:
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
+    paddleocr: PaddleOCRConfig = field(default_factory=PaddleOCRConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
     linking: LinkingConfig = field(default_factory=LinkingConfig)
@@ -118,6 +127,7 @@ def _build_app_config(raw: dict) -> AppConfig:
     return AppConfig(
         database=_build_section(DatabaseConfig, raw.get("database")),
         chunking=_build_section(ChunkingConfig, raw.get("chunking")),
+        paddleocr=_build_section(PaddleOCRConfig, raw.get("paddleocr")),
         embedding=_build_section(EmbeddingConfig, raw.get("embedding")),
         vector_store=_build_section(VectorStoreConfig, raw.get("vector_store")),
         linking=_build_section(LinkingConfig, raw.get("linking")),

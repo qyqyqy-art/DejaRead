@@ -1,6 +1,5 @@
-"""智能分块：按段落聚合到接近目标长度的 chunk，相邻 chunk 间保留重叠上下文。
-
-对应设计文档 3.1 节 "智能分块（按章节/段落，保留上下文）"。
+"""
+分块：按段落聚合到接近目标长度的 chunk，相邻 chunk 间保留重叠上下文。
 """
 
 from __future__ import annotations
@@ -16,8 +15,8 @@ _NUMBERED_HEADING_RE = re.compile(
     r"^\s*(?:[A-Z]\.?\d*|\d+)(?:\.\d+)*\.?\s+\S+",
 )
 
-# 匹配 Markdown 风格标题 (marker parser 输出)
-_MD_HEADING_RE = re.compile(r"^\s*#{1,4}\s+\S+")
+# 匹配 Markdown 风格标题 (marker / PaddleOCR parser 输出)
+_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+\S+")
 
 # PDF 断字：行尾连字符 + 换行 + 下一行以小写字母开头，表示单词被断开
 _DEHYPHEN_RE = re.compile(r"(\w)-\s*\n\s*([a-z])")
@@ -25,7 +24,9 @@ _DEHYPHEN_RE = re.compile(r"(\w)-\s*\n\s*([a-z])")
 
 @dataclass
 class TextChunk:
-    """一个分块的内容及其元数据，写入 SQLite 的 ``chunks`` 表前的中间表示。"""
+    """
+    一个分块的内容及其元数据，写入 SQLite 的 chunks 表前的中间表示。
+    """
 
     content: str
     section: str | None
@@ -34,7 +35,8 @@ class TextChunk:
 
 
 class Chunker:
-    """把 :class:`ParsedPaper` 切分为若干 :class:`TextChunk`。
+    """
+    把 :class: ParsedPaper 切分为若干 :class: TextChunk。
 
     策略：
     1. 先按段落（双换行）拆分每一页文本；
@@ -101,15 +103,20 @@ class Chunker:
 
     @staticmethod
     def _dehyphenate(text: str) -> str:
-        """修复 PDF 提取文本中的断字：行尾连字符 + 换行 + 小写字母开头 → 拼合单词。"""
+        """
+        修复 PDF 提取文本中的断字：行尾连字符 + 换行 + 小写字母开头 → 拼合单词。
+        """
         return _DEHYPHEN_RE.sub(r"\1\2", text)
 
     def _word_safe_overlap(self, text: str) -> str:
-        """取 text 末尾约 overlap_chars 字符，但在单词边界处截断，避免切断单词。"""
+        """
+        取 text 末尾约 overlap_chars 字符，但在单词边界处截断，避免切断单词。
+        """
         if len(text) <= self.overlap_chars:
             return text
         overlap = text[-self.overlap_chars :]
-        # 如果截取点正好在单词中间，向前跳到下一个空白字符之后
+
+        # 确保不在单词中间截断：如果 overlap 以空格开头，则直接返回；否则找到第一个空格，截断到空格后
         space_idx = overlap.find(" ")
         if space_idx > 0:
             overlap = overlap[space_idx + 1 :]
@@ -117,9 +124,10 @@ class Chunker:
 
     @staticmethod
     def _detect_heading(paragraph: str) -> str | None:
-        """识别章节标题。支持编号式标题和 Markdown 标题。"""
+        """
+        识别章节标题。支持编号式标题和 Markdown 标题。
+        """
         first_line = paragraph.splitlines()[0].strip()
-        # 过长的行不太可能是标题
         if len(first_line) > 80:
             return None
         # 编号式标题: "2. Architecture", "3.1 Experiment Results", "A.1 Appendix"
