@@ -7,15 +7,13 @@ Fusion（RRF）——只依赖每路结果内部的排名，是异构检索融�
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable
+from pydantic import BaseModel
 
 from ..embedding import Embedder, VectorStore
 from ..keyword import KeywordStore
 
 
-@dataclass
-class HybridMatch:
+class HybridMatch(BaseModel):
     """一次混合检索命中的结果。"""
 
     id: str
@@ -72,14 +70,13 @@ class HybridRetriever:
     def search(
         self,
         query_text: str,
-        metadata_filter: Callable[[dict], bool] | None = None,
-        overfetch_factor: int = 5,
+        metadata_filter: dict | None = None,
     ) -> list[HybridMatch]:
-        fetch_k = self.top_k * overfetch_factor if metadata_filter is not None else self.top_k
         query_embedding = self.embedder.embed_query(query_text)
-        vector_hits = self.vector_store.query(self.collection, query_embedding, top_k=fetch_k)
-        keyword_hits = self.keyword_store.query(self.collection, query_text, top_k=fetch_k)
-        if metadata_filter is not None:
-            vector_hits = [h for h in vector_hits if metadata_filter(h.metadata)][: self.top_k]
-            keyword_hits = [h for h in keyword_hits if metadata_filter(h.metadata)][: self.top_k]
-        return fuse_rrf(vector_hits, keyword_hits, self.rrf_k)
+        vector_hits = self.vector_store.query(
+            self.collection, query_embedding, top_k=self.top_k, metadata_filter=metadata_filter
+        )
+        keyword_hits = self.keyword_store.query(
+            self.collection, query_text, top_k=self.top_k, metadata_filter=metadata_filter
+        )
+        return fuse_rrf(vector_hits, keyword_hits, self.rrf_k)[:self.top_k]

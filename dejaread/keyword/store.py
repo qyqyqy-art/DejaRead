@@ -12,14 +12,16 @@ from __future__ import annotations
 import json
 import sqlite3
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 from ..config import get_config
 from .tokenizer import segment_for_index, segment_for_query
 
+_FTS_FILTER_FETCH_MULTIPLIER = 10  # FTS5 不支持列级过滤，多取后在 Python 层过滤
 
-@dataclass
-class KeywordMatch:
+
+class KeywordMatch(BaseModel):
     """一次关键词检索命中的结果。"""
 
     id: str
@@ -41,8 +43,18 @@ class KeywordStore(ABC):
         """插入或覆盖一批文本的关键词索引。"""
 
     @abstractmethod
-    def query(self, collection: str, query_text: str, top_k: int = 5) -> list[KeywordMatch]:
-        """在指定集合中做关键词检索，按 BM25 相关度降序返回。"""
+    def query(
+        self,
+        collection: str,
+        query_text: str,
+        top_k: int = 5,
+        metadata_filter: dict | None = None,
+    ) -> list[KeywordMatch]:
+        """在指定集合中做关键词检索，按 BM25 相关度降序返回。
+
+        metadata_filter 为简单等值过滤字典，FTS5 不支持列级过滤，
+        实现上内部多取后在 Python 层过滤，对调用方透明。
+        """
 
     @abstractmethod
     def delete(self, collection: str, ids: list[str]) -> None:
@@ -97,20 +109,33 @@ class SQLiteFTSStore(KeywordStore):
             )
         self._conn.commit()
 
-    def query(self, collection: str, query_text: str, top_k: int = 5) -> list[KeywordMatch]:
+    def query(
+        self,
+        collection: str,
+        query_text: str,
+        top_k: int = 5,
+        metadata_filter: dict | None = None,
+    ) -> list[KeywordMatch]:
         table = self._ensure_collection(collection)
         match_query = segment_for_query(query_text)
         if not match_query:
             return []
+        fetch_k = top_k * _FTS_FILTER_FETCH_MULTIPLIER if metadata_filter else top_k
         rows = self._conn.execute(
             f"SELECT id, metadata_json, bm25({table}) AS rank FROM {table} "
             f"WHERE {table} MATCH ? ORDER BY rank LIMIT ?",
-            (match_query, top_k),
+            (match_query, fetch_k),
         ).fetchall()
-        return [
+        results = [
             KeywordMatch(id=id_, score=-rank, metadata=json.loads(metadata_json))
             for id_, metadata_json, rank in rows
         ]
+        if metadata_filter:
+            results = [
+                r for r in results
+                if all(r.metadata.get(k) == v for k, v in metadata_filter.items())
+            ]
+        return results[:top_k]
 
     def delete(self, collection: str, ids: list[str]) -> None:
         if not ids:
