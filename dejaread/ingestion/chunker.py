@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 from ..config import get_config
 from .parser import ParsedPaper
@@ -22,8 +23,7 @@ _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+\S+")
 _DEHYPHEN_RE = re.compile(r"(\w)-\s*\n\s*([a-z])")
 
 
-@dataclass
-class TextChunk:
+class TextChunk(BaseModel):
     """
     一个分块的内容及其元数据，写入 SQLite 的 chunks 表前的中间表示。
     """

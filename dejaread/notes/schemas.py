@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pydantic import BaseModel
 
 
-@dataclass
-class ParsedSection:
+class ParsedSection(BaseModel):
     """笔记 markdown 按 `## ` 二级标题切分出的一段（不含标题行本身）。"""
 
     heading: str

@@ -19,15 +19,15 @@ import os
 import re
 import sys
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from ..config import get_config
 
 
-@dataclass
-class ParsedSection:
+class ParsedSection(BaseModel):
     """
     解析出的一段文本（粒度为页或章节）。
     """
@@ -37,8 +37,7 @@ class ParsedSection:
     heading: str | None = None
 
 
-@dataclass
-class ParsedPaper:
+class ParsedPaper(BaseModel):
     """
     PDF 解析结果：论文元数据 + 按页/章节切分的文本。
     """
@@ -47,7 +46,7 @@ class ParsedPaper:
     authors: str | None = None
     venue: str | None = None
     year: int | None = None
-    sections: list[ParsedSection] = field(default_factory=list)
+    sections: list[ParsedSection] = Field(default_factory=list)
 
     @property
     def full_text(self) -> str:

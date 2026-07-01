@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pydantic import BaseModel
 
 from ..config import get_config
 from ..embedding import VectorStore
@@ -10,8 +10,7 @@ from ..keyword import KeywordStore
 from ..retrieval.hybrid import fuse_rrf
 
 
-@dataclass
-class LinkCandidate:
+class LinkCandidate(BaseModel):
     """一个候选关联概念（向量+关键词粗筛通过，尚未经过 LLM 精排）。"""
 
     concept_id: str
