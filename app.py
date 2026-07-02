@@ -37,6 +37,7 @@ from dejaread.embedding import (
 from dejaread.ingestion import IngestionPipeline
 from dejaread.keyword import SQLiteFTSStore
 from dejaread.llm import LLMClient, MockLLMClient, OpenAICompatibleLLMClient
+from dejaread.memory.service import MemoryService
 from dejaread.notes.service import NotesService
 from dejaread.qa.schemas import ChatTurn, QARequest
 from dejaread.qa.service import QAService
@@ -73,6 +74,7 @@ vector_store: VectorStore = _build_vector_store()
 keyword_store = SQLiteFTSStore()
 concept_llm: ConceptLLM = _build_concept_llm()
 link_discovery = LinkDiscovery(vector_store, keyword_store)
+llm_client: LLMClient = _build_llm_client()
 
 ingestion_pipeline = IngestionPipeline(embedder=embedder, vector_store=vector_store)
 annotation_service = ConceptAnnotationService(
@@ -89,11 +91,14 @@ notes_service = NotesService(
     keyword_store=keyword_store,
 )
 
+memory_service = MemoryService(llm_client=llm_client)
+
 qa_service = QAService(
     embedder=embedder,
     vector_store=vector_store,
     keyword_store=keyword_store,
-    llm_client=_build_llm_client(),
+    llm_client=llm_client,
+    memory_service=memory_service,
 )
 
 
@@ -297,6 +302,28 @@ def import_conversation(paper_id: str | None, history: list[tuple[str, str]] | N
     return f"已将对话摘要写入论文 `{paper_id}` 的笔记。"
 
 
+def update_paper_memory_ui(paper_id: str | None, history: list[tuple[str, str]] | None) -> str:
+    if not paper_id:
+        return "请先选择一篇论文。"
+    chat_history = [ChatTurn(question=q, answer=a) for q, a in (history or [])]
+    try:
+        return memory_service.update_paper_memory(paper_id, chat_history)
+    except Exception as exc:  # noqa: BLE001 - 直接把错误展示给用户
+        return f"更新失败：{exc}"
+
+
+def load_user_memory_ui() -> str:
+    content = memory_service.read_user_memory()
+    return content or "（暂无用户画像，先在某篇论文下点「更新论文记忆」触发生成，或点「重新生成」手动触发）"
+
+
+def regenerate_user_memory_ui() -> str:
+    try:
+        return memory_service.update_user_memory()
+    except Exception as exc:  # noqa: BLE001
+        return f"生成失败：{exc}"
+
+
 with gr.Blocks(title="DejaRead") as demo:
     gr.Markdown("# DejaRead — 论文入库 & 选词标注")
 
@@ -355,6 +382,15 @@ with gr.Blocks(title="DejaRead") as demo:
                 qa_ask_button = gr.Button("提问", variant="primary")
                 qa_import_button = gr.Button("导入到笔记")
                 qa_import_status = gr.Markdown()
+            with gr.Column():
+                qa_update_memory_button = gr.Button("更新论文记忆")
+                qa_memory_output = gr.Markdown(label="论文记忆")
+
+    with gr.Tab("记忆"):
+        with gr.Column():
+            user_memory_output = gr.Markdown(label="用户画像")
+            load_user_memory_button = gr.Button("刷新显示")
+            regenerate_user_memory_button = gr.Button("重新生成", variant="primary")
 
     ingest_button.click(
         ingest_paper,
@@ -394,6 +430,13 @@ with gr.Blocks(title="DejaRead") as demo:
         inputs=[qa_paper_dropdown, qa_history_state],
         outputs=[qa_import_status],
     )
+    qa_update_memory_button.click(
+        update_paper_memory_ui,
+        inputs=[qa_paper_dropdown, qa_history_state],
+        outputs=[qa_memory_output],
+    )
+    load_user_memory_button.click(load_user_memory_ui, outputs=[user_memory_output])
+    regenerate_user_memory_button.click(regenerate_user_memory_ui, outputs=[user_memory_output])
 
 
 if __name__ == "__main__":
