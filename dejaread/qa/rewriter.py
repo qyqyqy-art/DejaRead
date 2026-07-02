@@ -21,10 +21,14 @@ from ..utils.utils import parse_json
 
 _REWRITE_SYSTEM_PROMPT = """你是一个学术论文问答助手的预处理模块。给定用户的历史问答和一个新问题，完成两件事：
 1. 改写新问题：补全省略的主语/宾语，消解指代（"它"、"这个方法"等），使问题脱离历史对话也能独立理解。
-2. 提取关键词：从改写后的问题中提取 3-6 个技术关键词，优先保留完整专有名词（如 "ResNet-50"、"attention mechanism"），不要拆分。
+2. 提取关键词：从改写后的问题中识别 3-6 个技术概念，优先保留完整专有名词，不要拆分。
+   论文原文通常是英文，因此每个技术概念都必须同时给出中文说法和对应的英文术语这两个版本，
+   即使问题里只用了其中一种语言表达，也要把另一种语言的对应术语翻译补全后一并加入 keywords 列表
+   （例如问题里只提到"注意力机制"，keywords 中也要包含 "attention mechanism"）。
+   如果某个概念本身就是专有名词/缩写（如 "ResNet-50"），中英文视为同一个词，只需保留一次。
 
 输出严格遵守以下 JSON 格式，不要输出任何其他内容：
-{{"rewritten_query": "...", "keywords": ["kw1", "kw2", ...]}}
+{{"rewritten_query": "...", "keywords": ["注意力机制", "attention mechanism", "ResNet-50", ...]}}
 """
 
 
@@ -42,11 +46,11 @@ class QueryRewriter:
 
     def rewrite(self, question: str, history: list[ChatTurn]) -> RewriteResult:
         if not history:
-            return RewriteResult(rewritten_query=question)
-
-        recent = history[-self.max_history_turns :]
-        history_text = "\n".join(f"Q: {t.question}" for t in recent)
-        user = f"历史问答：\n{history_text}\n\n新问题：{question}"
+            user = f"问题：{question}"
+        else:
+            recent = history[-self.max_history_turns :]
+            history_text = "\n".join(f"Q: {t.question}" for t in recent)
+            user = f"历史问答：\n{history_text}\n\n新问题：{question}"
 
         raw = self.llm_client.chat(_REWRITE_SYSTEM_PROMPT, user)
         return self._parse(raw, question)

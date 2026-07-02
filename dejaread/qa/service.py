@@ -105,12 +105,12 @@ class QAService:
             extra_ids = [id_ for id_ in grep_ids if id_ not in existing_chunk_ids]
 
             chunks = self._load_chunks(session, [m.id for m in chunk_matches] + extra_ids)
-            sections = self._load_sections(session, [m.id for m in note_matches])
+            notes = self._load_notes(session, [m.id for m in note_matches])
             concepts = self._load_concepts(session, [m.id for m in concept_matches])
         finally:
             session.close()
 
-        context_blocks, citations = self._build_context(chunks, sections, concepts)
+        context_blocks, citations = self._build_context(chunks, notes, concepts)
 
         paper_memory = ""
         if self.paper_memory_provider is not None:
@@ -157,7 +157,7 @@ class QAService:
     def _build_context(
         self,
         chunks: list[Chunk],
-        sections: list[NoteSection],
+        notes: list[NoteSection],
         concepts: list[Concept],
     ) -> tuple[list[str], list[Citation]]:
         """按 token budget 截断并组装 context，优先级：chunk > note > concept。"""
@@ -169,24 +169,24 @@ class QAService:
         for chunk in chunks:
             block = f"[论文原文] {chunk.content}"
             if used + len(block) > budget_chars:
-                break
+                continue
             blocks.append(block)
             citations.append(Citation(source_type="chunk", paper_id=chunk.paper_id, snippet=chunk.content[:200]))
             used += len(block)
 
-        for section in sections:
-            block = f"[笔记 - 论文{section.paper_id}] {section.heading}: {section.content}"
+        for note_section in notes:
+            block = f"[笔记 - 论文{note_section.paper_id}] {note_section.heading}: {note_section.content}"
             if used + len(block) > budget_chars:
-                break
+                continue
             blocks.append(block)
-            citations.append(Citation(source_type="note", paper_id=section.paper_id, snippet=section.content[:200]))
+            citations.append(Citation(source_type="note", paper_id=note_section.paper_id, snippet=note_section.content[:200]))
             used += len(block)
 
         for concept in concepts:
             definition = concept.definition or ""
             block = f"[概念图谱] {concept.name}（来自论文 {concept.paper_id}）：{definition}"
             if used + len(block) > budget_chars:
-                break
+                continue
             blocks.append(block)
             citations.append(Citation(source_type="concept", paper_id=concept.paper_id, snippet=definition[:200]))
             used += len(block)
@@ -211,7 +211,7 @@ class QAService:
         rows = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(ids)).all()}
         return [rows[id_] for id_ in ids if id_ in rows]
 
-    def _load_sections(self, session: Session, ids: list[str]) -> list[NoteSection]:
+    def _load_notes(self, session: Session, ids: list[str]) -> list[NoteSection]:
         if not ids:
             return []
         rows = {s.id: s for s in session.query(NoteSection).filter(NoteSection.id.in_(ids)).all()}

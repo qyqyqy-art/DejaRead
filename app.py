@@ -262,19 +262,27 @@ def save_note(paper_id: str | None, content: str) -> str:
     return "保存成功。"
 
 
+def _history_to_messages(history: list[tuple[str, str]]) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    for question, answer in history:
+        messages.append({"role": "user", "content": question})
+        messages.append({"role": "assistant", "content": answer})
+    return messages
+
+
 def ask_question(
     paper_id: str | None, question: str, history: list[tuple[str, str]] | None
-) -> tuple[list[tuple[str, str]], list[tuple[str, str]], str]:
+) -> tuple[list[dict[str, str]], list[tuple[str, str]], str]:
     history = history or []
     if not paper_id or not question or not question.strip():
-        return history, history, question
+        return _history_to_messages(history), history, question
 
     chat_history = [ChatTurn(question=q, answer=a) for q, a in history]
     result = qa_service.ask(
         QARequest(paper_id=paper_id, question=question.strip(), history=chat_history)
     )
     new_history = history + [(question.strip(), result.answer)]
-    return new_history, new_history, ""
+    return _history_to_messages(new_history), new_history, ""
 
 
 def import_conversation(paper_id: str | None, history: list[tuple[str, str]] | None) -> str:
@@ -336,7 +344,7 @@ with gr.Blocks(title="DejaRead") as demo:
             with gr.Column():
                 note_textbox = gr.Textbox(label="笔记内容（Markdown）", lines=20)
 
-    with gr.Tab("3.5 问答（预览）"):
+    with gr.Tab("3.5 问答"):
         with gr.Row():
             with gr.Column():
                 qa_paper_dropdown = gr.Dropdown(label="当前论文", choices=_list_papers())
