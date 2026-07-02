@@ -9,15 +9,19 @@ LLM 输入的一部分保留下去。
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from sqlalchemy.orm import Session
 
 from ..config import get_config
 from ..db import Concept, Paper, get_session
 from ..llm import LLMClient
-from ..qa.schemas import ChatTurn
 from ..utils.utils import setup_logger
+
+if TYPE_CHECKING:
+    # 延迟到类型检查阶段才 import，避免运行时触发 dejaread.qa 包初始化
+    # （dejaread.qa.service 反过来 import 本模块，直接 import 会形成循环 import）。
+    from ..qa.schemas import ChatTurn
 from .parser import (
     parse_paper_memory,
     parse_user_memory,

@@ -4,8 +4,6 @@
   - 当前论文 chunk（向量 + BM25 + grep 关键词增强）
   - 全库笔记 section（向量 + BM25）
   - 全库概念图谱（向量 + BM25）
-
-paper_memory_provider 为占位接口，待记忆模块完成后注入真实实现。
 """
 
 from __future__ import annotations
@@ -21,6 +19,7 @@ from ..db import Chunk, Concept, NoteSection, get_session
 from ..embedding import Embedder, VectorStore
 from ..keyword import KeywordStore
 from ..llm import LLMClient
+from ..memory.service import MemoryService
 from ..retrieval import HybridRetriever
 from ..utils.utils import setup_logger
 from .rewriter import QueryRewriter
@@ -43,13 +42,13 @@ class QAService:
         chunk_collection: str | None = None,
         note_collection: str | None = None,
         concept_collection: str | None = None,
-        paper_memory_provider: Callable[[str], str] | None = None,
+        memory_service: MemoryService | None = None,
         session_factory: Callable[[], Session] = get_session,
     ) -> None:
         config = get_config()
         self.llm_client = llm_client
         self._session_factory = session_factory
-        self.paper_memory_provider = paper_memory_provider
+        self.memory_service = memory_service
 
         self.chunk_collection = chunk_collection or config.vector_store.chunk_collection
         self.note_collection = note_collection or config.notes.section_collection
@@ -126,10 +125,13 @@ class QAService:
         logger.info("context 组装完成：blocks=%d citations=%d", len(context_blocks), len(citations))
 
         paper_memory = ""
-        if self.paper_memory_provider is not None:
-            paper_memory = self.paper_memory_provider(request.paper_id)
+        user_memory = ""
+        if self.memory_service is not None:
+            paper_memory = self.memory_service.read_paper_memory(request.paper_id)
+            user_memory = self.memory_service.read_user_memory()
 
-        system = self._build_system_prompt(paper_memory)
+        system = self._build_system_prompt(paper_memory, user_memory)
+        memory_snippets = [snippet for snippet in (user_memory, paper_memory) if snippet]
 
         user_parts: list[str] = []
         history_text = "\n".join(f"Q: {t.question}\nA: {t.answer}" for t in request.history)
@@ -148,7 +150,7 @@ class QAService:
             logger.exception("ask LLM 生成回答失败：paper_id=%s", request.paper_id)
             raise
         logger.info("ask 完成：paper_id=%s answer_len=%d", request.paper_id, len(answer))
-        return QAResult(answer=answer, citations=citations)
+        return QAResult(answer=answer, citations=citations, memory_snippets=memory_snippets)
 
     def summarize_conversation(self, history: list[ChatTurn]) -> str:
         """把一段问答历史总结成 3-6 句中文摘要，供导入笔记的 "## 对话摘要" 段使用。"""
@@ -163,13 +165,15 @@ class QAService:
     # 内部辅助方法
     # ------------------------------------------------------------------
 
-    def _build_system_prompt(self, paper_memory: str) -> str:
+    def _build_system_prompt(self, paper_memory: str, user_memory: str) -> str:
         base = (
             "你是一个论文阅读助手，基于下面提供的论文原文片段、笔记摘录和概念图谱信息回答用户问题。"
             "回答时区分来源（论文原文 / 笔记 / 概念图谱）；如果提供的内容不足以回答，直接说明信息不足，不要编造。"
         )
+        if user_memory:
+            base = f"{base}\n\n关于你的偏好，你已积累的信息：\n{user_memory}"
         if paper_memory:
-            return f"{base}\n\n关于当前论文，你已积累的背景信息：\n{paper_memory}"
+            base = f"{base}\n\n关于当前论文，你已积累的背景信息：\n{paper_memory}"
         return base
 
     def _build_context(
