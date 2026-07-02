@@ -101,6 +101,11 @@ class QAConfig:
 
 
 @dataclass
+class MemoryConfig:
+    memory_dir: str = "./memory"
+
+
+@dataclass
 class AppConfig:
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
@@ -113,6 +118,7 @@ class AppConfig:
     keyword_store: KeywordStoreConfig = field(default_factory=KeywordStoreConfig)
     notes: NotesConfig = field(default_factory=NotesConfig)
     qa: QAConfig = field(default_factory=QAConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
 
 
 def _build_section(section_cls: type, data: dict | None) -> object:
@@ -138,6 +144,7 @@ def _build_app_config(raw: dict) -> AppConfig:
         keyword_store=_build_section(KeywordStoreConfig, raw.get("keyword_store")),
         notes=_build_section(NotesConfig, raw.get("notes")),
         qa=_build_section(QAConfig, raw.get("qa")),
+        memory=_build_section(MemoryConfig, raw.get("memory")),
     )
 
 
