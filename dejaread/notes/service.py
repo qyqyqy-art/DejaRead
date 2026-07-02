@@ -17,7 +17,10 @@ from ..config import get_config
 from ..db import Note, NoteSection, Paper, get_session
 from ..embedding import Embedder, VectorStore
 from ..keyword import KeywordStore
+from ..utils.utils import setup_logger
 from .parser import split_sections
+
+logger = setup_logger(log_dir="logs/log_notes", logger_name="notes_service")
 
 
 def _ensure_heading_and_append(markdown: str, heading: str, block: str) -> str:
@@ -82,10 +85,12 @@ class NotesService:
         content = f"# {title}\n"
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+        logger.info("笔记文件不存在，已按模板创建：paper_id=%s path=%s", paper_id, path)
         return content
 
     def save(self, paper_id: str, raw_markdown: str) -> None:
         """全量重建：写文件 → 清除旧 section 索引 → 重新解析 → 写入新索引。"""
+        logger.info("save 开始：paper_id=%s content_len=%d", paper_id, len(raw_markdown))
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         path = self._file_path(paper_id)
         path.write_text(raw_markdown, encoding="utf-8")
@@ -123,6 +128,7 @@ class NotesService:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("save 事务失败，已回滚：paper_id=%s", paper_id)
             raise
         finally:
             session.close()
@@ -143,6 +149,8 @@ class NotesService:
             ]
             self.vector_store.upsert(self.section_collection, ids, embeddings, metadatas, documents=texts)
             self.keyword_store.upsert(self.section_collection, ids, texts, metadatas)
+
+        logger.info("save 完成：paper_id=%s old_sections=%d new_sections=%d", paper_id, len(old_section_ids), len(new_section_data))
 
     def append_concept(
         self,

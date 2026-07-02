@@ -23,9 +23,12 @@ from ..config import get_config
 from ..db import Chunk, Concept, ConceptLink, get_session
 from ..embedding import Embedder, InMemoryVectorStore, VectorStore
 from ..keyword import KeywordStore, SQLiteFTSStore
+from ..utils.utils import setup_logger
 from .linking import LinkCandidate, LinkDiscovery
 from .llm import ConceptLLM, MockConceptLLM
 from .schemas import AnnotationRequest, AnnotationResult, LinkResult
+
+logger = setup_logger(log_dir="logs/log_concepts", logger_name="concepts_annotation")
 
 
 class ConceptAnnotationService:
@@ -56,6 +59,7 @@ class ConceptAnnotationService:
 
     def annotate(self, request: AnnotationRequest) -> AnnotationResult:
         """处理一次选词标注请求，返回概念解释 + 跨论文关联（如有）。"""
+        logger.info("annotate 开始：paper_id=%s selected_text=%r", request.paper_id, request.selected_text)
         session = self._session_factory()
         try:
             chunks = self._locate_chunks(session, request)
@@ -100,6 +104,7 @@ class ConceptAnnotationService:
             session.refresh(concept)
         except Exception:
             session.rollback()
+            logger.exception("annotate 事务失败，已回滚：paper_id=%s selected_text=%r", request.paper_id, request.selected_text)
             raise
         finally:
             session.close()
@@ -123,6 +128,7 @@ class ConceptAnnotationService:
             metadatas=concept_metadata,
         )
 
+        logger.info("annotate 完成：concept_id=%s name=%r links=%d", concept.id, concept.name, len(links))
         return AnnotationResult(
             concept_id=concept.id,
             name=concept.name,

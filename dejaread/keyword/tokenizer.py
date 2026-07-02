@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import re
 import jieba
+jieba.initialize()
 
 _PUNCT_RE = re.compile(r"^[\s\W]+$", re.UNICODE)
 
 
 def segment(text: str) -> list[str]:
-    """切分文本为清洗后的小写 token 列表。
-
+    """
+    切分文本为清洗后的小写 token 列表。
     中文按词切分，英文/数字保持整词（jieba 不会拆成单字母），过滤纯空白/标点 token。
     """
     tokens = []

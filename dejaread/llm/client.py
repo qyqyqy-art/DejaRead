@@ -11,6 +11,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from ..config import get_config
+from ..utils.utils import setup_logger
+
+logger = setup_logger(log_dir="logs/log_llm", logger_name="llm_client")
 
 
 class LLMClient(ABC):
@@ -62,12 +65,19 @@ class OpenAICompatibleLLMClient(LLMClient):
         self._temperature = 0.6
 
     def chat(self, system: str, user: str) -> str:
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=self._temperature,
-        )
-        return response.choices[0].message.content or ""
+        logger.info("chat 请求：model=%s system_len=%d user_len=%d", self._model, len(system), len(user))
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=self._temperature,
+            )
+        except Exception:
+            logger.exception("chat 请求失败：model=%s", self._model)
+            raise
+        content = response.choices[0].message.content or ""
+        logger.info("chat 完成：model=%s answer_len=%d", self._model, len(content))
+        return content

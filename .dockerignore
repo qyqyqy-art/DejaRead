@@ -9,6 +9,7 @@ chroma_data/
 .claude/
 .copilot/
 .opencode/
+logs/
 
 docs/
 tests/

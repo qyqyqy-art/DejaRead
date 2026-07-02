@@ -25,6 +25,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..config import get_config
+from ..utils.utils import setup_logger
+
+logger = setup_logger(log_dir="logs/log_ingestion_parser", logger_name="ingestion_parser")
 
 
 class ParsedSection(BaseModel):
@@ -158,8 +161,14 @@ class PaddleOCRPDFParser(PDFParser):
 
     def parse(self, pdf_path: str | Path) -> ParsedPaper:
         path = Path(pdf_path)
-        output = list(self._get_pipeline().predict(str(path)))
+        logger.info("PaddleOCR-VL 解析开始：pdf_path=%s", path)
+        try:
+            output = list(self._get_pipeline().predict(str(path)))
+        except Exception:
+            logger.exception("PaddleOCR-VL 解析请求失败：pdf_path=%s", path)
+            raise
         if not output:
+            logger.error("PaddleOCR-VL 返回空结果：pdf_path=%s", path)
             raise RuntimeError(f"PaddleOCR-VL returned no results for {path}")
 
         predict_output_dir = self._save_predict_output(output, path)
@@ -175,6 +184,7 @@ class PaddleOCRPDFParser(PDFParser):
             "markdown_text": markdown_text,
             "pipeline_settings": self._pipeline_settings(),
         }
+        logger.info("PaddleOCR-VL 解析完成：pdf_path=%s title=%r sections=%d", path, parsed.title, len(sections))
         return parsed
 
     def save_artifacts(self, paper_name: str, paper_id: str) -> Path:

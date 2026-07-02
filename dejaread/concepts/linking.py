@@ -8,6 +8,9 @@ from ..config import get_config
 from ..embedding import VectorStore
 from ..keyword import KeywordStore
 from ..retrieval.hybrid import fuse_rrf
+from ..utils.utils import setup_logger
+
+logger = setup_logger(log_dir="logs/log_concepts_linking", logger_name="concepts_linking")
 
 
 class LinkCandidate(BaseModel):
@@ -80,4 +83,8 @@ class LinkDiscovery:
             candidates.append(
                 LinkCandidate(concept_id=match.id, paper_id=paper_id, score=match.fused_score)
             )
+        logger.info(
+            "find_candidates 完成：vector_hits=%d keyword_hits=%d candidates=%d",
+            len(vector_matches), len(keyword_matches), len(candidates),
+        )
         return candidates

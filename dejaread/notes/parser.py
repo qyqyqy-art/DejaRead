@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import re
 
+from ..utils.utils import setup_logger
 from .schemas import ParsedSection
 
 _HEADING_RE = re.compile(r"^## (.+)$")
+
+logger = setup_logger(log_dir="logs/log_notes_parser", logger_name="notes_parser")
 
 
 def split_sections(markdown: str) -> list[ParsedSection]:
@@ -43,4 +46,5 @@ def split_sections(markdown: str) -> list[ParsedSection]:
         elif current_heading is not None:
             current_lines.append(line)
     flush()
+    logger.debug("split_sections 完成：sections=%d", len(sections))
     return sections

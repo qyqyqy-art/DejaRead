@@ -16,8 +16,11 @@ from ..config import get_config
 from ..db import Chunk, Paper, get_session
 from ..embedding import Embedder, InMemoryVectorStore, VectorStore
 from ..keyword import KeywordStore, SQLiteFTSStore
+from ..utils.utils import setup_logger
 from .chunker import Chunker
 from .parser import PaddleOCRPDFParser, ParsedPaper, PDFParser
+
+logger = setup_logger(log_dir="logs/log_ingestion", logger_name="ingestion_pipeline")
 
 
 class IngestionPipeline:
@@ -53,8 +56,10 @@ class IngestionPipeline:
         year: int | None = None,
     ) -> Paper:
         """入库一篇 PDF 论文，返回写入数据库后的 :class:`Paper` 记录。"""
+        logger.info("ingest 开始：pdf_path=%s", pdf_path)
         parsed = self.parser.parse(pdf_path)
         text_chunks = self.chunker.chunk(parsed)
+        logger.info("解析完成：pdf_path=%s sections=%d chunks=%d", pdf_path, len(parsed.sections), len(text_chunks))
 
         session = self._session_factory()
         try:
@@ -65,11 +70,13 @@ class IngestionPipeline:
             session.refresh(paper)
         except Exception:
             session.rollback()
+            logger.exception("ingest 事务失败，已回滚：pdf_path=%s", pdf_path)
             raise
         finally:
             session.close()
 
         self._index_chunks(paper.id, chunks)
+        logger.info("ingest 完成：paper_id=%s pdf_path=%s", paper.id, pdf_path)
         return paper
 
     def _save_parser_artifacts(self, paper: Paper) -> None:

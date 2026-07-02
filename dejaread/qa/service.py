@@ -22,10 +22,13 @@ from ..embedding import Embedder, VectorStore
 from ..keyword import KeywordStore
 from ..llm import LLMClient
 from ..retrieval import HybridRetriever
+from ..utils.utils import setup_logger
 from .rewriter import QueryRewriter
 from .schemas import ChatTurn, Citation, QARequest, QAResult
 
 _CHARS_PER_TOKEN = 1.5  # 中文估算：1 token ≈ 1.5 字符
+
+logger = setup_logger(log_dir="logs/log_qa", logger_name="qa_service")
 
 
 class QAService:
@@ -80,9 +83,11 @@ class QAService:
         self.context_token_budget = config.qa.context_token_budget
 
     def ask(self, request: QARequest) -> QAResult:
+        logger.info("ask 开始：paper_id=%s question=%r", request.paper_id, request.question)
         rewrite = self.rewriter.rewrite(request.question, request.history)
         query = rewrite.rewritten_query
         keywords = rewrite.keywords
+        logger.info("query 改写完成：rewritten_query=%r keywords=%s", query, keywords)
 
         # 三路并行检索
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -96,6 +101,10 @@ class QAService:
             chunk_matches = future_chunks.result()
             note_matches = future_notes.result()
             concept_matches = future_concepts.result()
+        logger.info(
+            "三路检索命中数：chunk=%d note=%d concept=%d",
+            len(chunk_matches), len(note_matches), len(concept_matches),
+        )
 
         session = self._session_factory()
         try:
@@ -107,10 +116,14 @@ class QAService:
             chunks = self._load_chunks(session, [m.id for m in chunk_matches] + extra_ids)
             notes = self._load_notes(session, [m.id for m in note_matches])
             concepts = self._load_concepts(session, [m.id for m in concept_matches])
+        except Exception:
+            logger.exception("ask 检索/加载阶段失败：paper_id=%s", request.paper_id)
+            raise
         finally:
             session.close()
 
         context_blocks, citations = self._build_context(chunks, notes, concepts)
+        logger.info("context 组装完成：blocks=%d citations=%d", len(context_blocks), len(citations))
 
         paper_memory = ""
         if self.paper_memory_provider is not None:
@@ -129,7 +142,12 @@ class QAService:
         user_parts.append(f"当前问题：{request.question}")
         user = "\n\n".join(user_parts)
 
-        answer = self.llm_client.chat(system, user).strip()
+        try:
+            answer = self.llm_client.chat(system, user).strip()
+        except Exception:
+            logger.exception("ask LLM 生成回答失败：paper_id=%s", request.paper_id)
+            raise
+        logger.info("ask 完成：paper_id=%s answer_len=%d", request.paper_id, len(answer))
         return QAResult(answer=answer, citations=citations)
 
     def summarize_conversation(self, history: list[ChatTurn]) -> str:

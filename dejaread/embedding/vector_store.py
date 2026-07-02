@@ -17,6 +17,9 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel
 
 from ..config import get_config
+from ..utils.utils import setup_logger
+
+logger = setup_logger(log_dir="logs/log_vector_store", logger_name="embedding_vector_store")
 
 
 class VectorMatch(BaseModel):
@@ -138,6 +141,7 @@ class ChromaVectorStore(VectorStore):
     ) -> None:
         col = self._get_collection(collection)
         col.upsert(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
+        logger.info("upsert 完成：collection=%s ids=%d", collection, len(ids))
 
     def query(
         self,
@@ -159,10 +163,12 @@ class ChromaVectorStore(VectorStore):
         distances = result["distances"][0]
         metadatas = result["metadatas"][0]
         # Chroma 默认距离度量是 L2，这里转换成与余弦相似度同向（越大越相似）的分数。
-        return [
+        matches = [
             VectorMatch(id=id_, score=1.0 / (1.0 + dist), metadata=meta or {})
             for id_, dist, meta in zip(ids, distances, metadatas)
         ]
+        logger.info("query 完成：collection=%s matches=%d", collection, len(matches))
+        return matches
 
     @staticmethod
     def _build_where(metadata_filter: dict | None) -> dict | None:
@@ -178,3 +184,4 @@ class ChromaVectorStore(VectorStore):
         if not ids:
             return
         self._get_collection(collection).delete(ids=ids)
+        logger.info("delete 完成：collection=%s ids=%d", collection, len(ids))

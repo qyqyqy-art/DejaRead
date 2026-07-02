@@ -16,9 +16,12 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel
 
 from ..config import get_config
+from ..utils.utils import setup_logger
 from .tokenizer import segment_for_index, segment_for_query
 
 _FTS_FILTER_FETCH_MULTIPLIER = 10  # FTS5 不支持列级过滤，多取后在 Python 层过滤
+
+logger = setup_logger(log_dir="logs/log_keyword", logger_name="keyword_store")
 
 
 class KeywordMatch(BaseModel):
@@ -108,6 +111,7 @@ class SQLiteFTSStore(KeywordStore):
                 (segment_for_index(text), id_, json.dumps(metadata)),
             )
         self._conn.commit()
+        logger.info("upsert 完成：collection=%s ids=%d", collection, len(ids))
 
     def query(
         self,
@@ -135,7 +139,9 @@ class SQLiteFTSStore(KeywordStore):
                 r for r in results
                 if all(r.metadata.get(k) == v for k, v in metadata_filter.items())
             ]
-        return results[:top_k]
+        results = results[:top_k]
+        logger.info("query 完成：collection=%s query_text=%r matches=%d", collection, query_text, len(results))
+        return results
 
     def delete(self, collection: str, ids: list[str]) -> None:
         if not ids:
@@ -144,3 +150,4 @@ class SQLiteFTSStore(KeywordStore):
         placeholders = ",".join("?" for _ in ids)
         self._conn.execute(f"DELETE FROM {table} WHERE id IN ({placeholders})", ids)
         self._conn.commit()
+        logger.info("delete 完成：collection=%s ids=%d", collection, len(ids))

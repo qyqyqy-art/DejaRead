@@ -9,7 +9,10 @@ import re
 from pydantic import BaseModel
 
 from ..config import get_config
+from ..utils.utils import setup_logger
 from .parser import ParsedPaper
+
+logger = setup_logger(log_dir="logs/log_ingestion_chunker", logger_name="ingestion_chunker")
 
 # 匹配编号式章节标题，如 "2. Architecture"、"3.1 Experiment"、"A.2 Acknowledgment"
 _NUMBERED_HEADING_RE = re.compile(
@@ -95,6 +98,7 @@ class Chunker:
                 buffer = f"{buffer}\n{paragraph}".strip() if buffer else paragraph
 
         flush()
+        logger.info("chunk 完成：sections=%d chunks=%d", len(paper.sections), len(chunks))
         return chunks
 
     @staticmethod

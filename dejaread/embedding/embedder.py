@@ -11,6 +11,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from ..config import get_config
+from ..utils.utils import setup_logger
+
+logger = setup_logger(log_dir="logs/log_embedding", logger_name="embedding_embedder")
 
 
 class Embedder(ABC):
@@ -127,9 +130,12 @@ class RemoteEmbedder(Embedder):
 
         response = self._requests.post(url, headers=self._headers(), json=payload, timeout=self.timeout)
         if response.status_code >= 400:
+            logger.error("Embedding API 请求失败：status=%d body=%s", response.status_code, response.text)
             raise RuntimeError(f"Embedding API failed: {response.status_code} {response.text}")
 
         data = response.json()
         if "data" not in data:
+            logger.error("Embedding API 返回格式异常：%s", data)
             raise RuntimeError(f"Unexpected embedding response: {data}")
+        logger.info("embedding 请求完成：inputs=%d", len(inputs))
         return [item["embedding"] for item in data["data"]]

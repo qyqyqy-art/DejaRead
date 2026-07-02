@@ -11,6 +11,9 @@ from pydantic import BaseModel
 
 from ..embedding import Embedder, VectorStore
 from ..keyword import KeywordStore
+from ..utils.utils import setup_logger
+
+logger = setup_logger(log_dir="logs/log_retrieval", logger_name="retrieval_hybrid")
 
 
 class HybridMatch(BaseModel):
@@ -79,4 +82,9 @@ class HybridRetriever:
         keyword_hits = self.keyword_store.query(
             self.collection, query_text, top_k=self.top_k, metadata_filter=metadata_filter
         )
-        return fuse_rrf(vector_hits, keyword_hits, self.rrf_k)[:self.top_k]
+        fused = fuse_rrf(vector_hits, keyword_hits, self.rrf_k)[:self.top_k]
+        logger.info(
+            "search 完成：collection=%s vector_hits=%d keyword_hits=%d fused=%d",
+            self.collection, len(vector_hits), len(keyword_hits), len(fused),
+        )
+        return fused

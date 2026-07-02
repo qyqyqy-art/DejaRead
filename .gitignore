@@ -5,6 +5,7 @@
 .venv/
 *.db
 chroma_data/
+logs/
 
 .claude/
 .copilot/
